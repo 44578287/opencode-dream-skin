@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+
+  --color-background: var(--oc-background, #1a1b26);
+  --color-foreground: var(--oc-text, #c0caf5);
+  --color-panel: var(--oc-backgroundPanel, #16161e);
+  --color-element: var(--oc-backgroundElement, #24283b);
+  --color-muted: var(--oc-textMuted, #565f89);
+  --color-primary: var(--oc-primary, #7aa2f7);
+  --color-primary-fg: var(--oc-primary-fg, #0c0d12);
+  --color-accent: var(--oc-accent, #7dcfff);
+  --color-border: var(--oc-border, #292e42);
+  --color-border-active: var(--oc-borderActive, #3b4261);
+  --color-border-subtle: var(--oc-borderSubtle, #1f2335);
+  --color-success: var(--oc-success, #9ece6a);
+  --color-error: var(--oc-error, #f7768e);
+  --color-warning: var(--oc-warning, #e0af68);
+  --color-info: var(--oc-info, #7aa2f7);
+
+  --color-diff-add: var(--oc-diffAdded, #9ece6a);
+  --color-diff-del: var(--oc-diffRemoved, #f7768e);
+  --color-diff-add-bg: var(--oc-diffAddedBg, #1e2a1e);
+  --color-diff-del-bg: var(--oc-diffRemovedBg, #2a1e22);
+
+  --color-syn-comment: var(--oc-syntaxComment, #565f89);
+  --color-syn-keyword: var(--oc-syntaxKeyword, #bb9af7);
+  --color-syn-func: var(--oc-syntaxFunction, #7aa2f7);
+  --color-syn-string: var(--oc-syntaxString, #9ece6a);
+  --color-syn-number: var(--oc-syntaxNumber, #ff9e64);
+  --color-syn-type: var(--oc-syntaxType, #2ac3de);
+  --color-syn-punct: var(--oc-syntaxPunctuation, #c0caf5);
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shadow-window: 0 24px 80px color-mix(in oklab, #000 45%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--oc-text, #c0caf5) 8%, transparent);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.desktop-scene {
+  background-color: var(--color-background);
+  background-image:
+    radial-gradient(1200px 600px at 50% -10%, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent 60%),
+    linear-gradient(color-mix(in oklab, var(--color-foreground) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--color-foreground) 4%, transparent) 1px, transparent 1px);
+  background-size: auto, 48px 48px, 48px 48px;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--color-foreground) 18%, transparent) 45%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: shimmer-sweep 1.4s linear infinite;
+}
+
+@keyframes shimmer-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.ds-wallpaper,
+.ds-quote {
+  display: none;
+}
+
+html[data-dream-skin="active"] body {
+  background: var(--ds-bg, var(--color-background));
+}
+
+html[data-dream-skin="active"] .desktop-scene {
+  background-color: color-mix(in oklab, var(--ds-bg, var(--color-background)) 82%, black);
+  background-image: none;
+}
+
+html[data-dream-skin="active"] .desktop-window {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  box-shadow:
+    0 28px 80px rgb(0 0 0 / 0.48),
+    0 0 0 1px rgb(var(--ds-accent-rgb, 200 165 90) / 0.28);
+}
+
+html[data-dream-skin="active"] .ds-wallpaper {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--ds-wallpaper);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: var(--ds-art-position, 76% 45%);
+}
+
+html[data-dream-skin="active"] .ds-wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.78) 0%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.42) 36%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.12) 58%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.04) 100%
+  );
+}
+
+html[data-ds-safe="right"] .ds-wallpaper::after {
+  background: linear-gradient(
+    270deg,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.78) 0%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.42) 36%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.12) 58%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.04) 100%
+  );
+}
+
+html[data-ds-safe="center"] .ds-wallpaper::after {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.55) 0%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.08) 28%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.08) 72%,
+    rgb(var(--ds-bg-rgb, 13 13 14) / 0.55) 100%
+  );
+}
+
+html[data-ds-safe="none"] .ds-wallpaper::after {
+  background: rgb(var(--ds-bg-rgb, 13 13 14) / 0.16);
+}
+
+html[data-dream-skin="active"] .desktop-window > *:not(.ds-wallpaper) {
+  position: relative;
+  z-index: 1;
+}
+
+html[data-dream-skin="active"] [data-ds-part="header"],
+html[data-dream-skin="active"] [data-ds-part="sidebar"],
+html[data-dream-skin="active"] [data-ds-part="composer"],
+html[data-dream-skin="active"] [data-ds-part="main"],
+html[data-dream-skin="active"] [data-ds-part="composer-toolbar"],
+html[data-dream-skin="active"] [data-ds-chrome] {
+  background: rgb(var(--ds-panel-rgb, 23 21 19) / var(--ds-theme-surface-opacity, 0.58));
+  backdrop-filter: blur(var(--ds-theme-surface-blur, 18px)) saturate(1.18);
+  -webkit-backdrop-filter: blur(var(--ds-theme-surface-blur, 18px)) saturate(1.18);
+  border-color: var(--ds-line, rgb(var(--ds-accent-rgb, 200 165 90) / 0.28));
+}
+
+html[data-dream-skin="active"] [data-ds-part="thread"],
+html[data-dream-skin="active"] [data-ds-part="home"] {
+  background: rgb(var(--ds-bg-rgb, 13 13 14) / 0.14);
+}
+
+html[data-dream-skin="active"] [data-ds-part="composer"] .ds-composer-box {
+  background: rgb(var(--ds-panel-2-rgb, 33 29 24) / 0.62);
+  border-color: var(--ds-line, rgb(var(--ds-accent-rgb, 200 165 90) / 0.28));
+}
+
+html[data-dream-skin="active"] [role="dialog"],
+html[data-dream-skin="active"] [data-ds-part="dialog"] {
+  background: rgb(var(--ds-panel-rgb, 23 21 19) / 0.86);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border-color: var(--ds-line, rgb(var(--ds-accent-rgb, 200 165 90) / 0.28));
+}
+
+html[data-dream-skin="active"] .ds-command {
+  background: rgb(var(--ds-panel-rgb, 23 21 19) / 0.88);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+}
+
+.ds-eyebrow {
+  color: var(--ds-accent, var(--color-primary));
+  letter-spacing: 0.22em;
+}
+
+.ds-empty-quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--ds-text, var(--color-foreground));
+  text-shadow: 0 8px 32px rgb(var(--ds-bg-rgb, 13 13 14) / 0.55);
+}
+

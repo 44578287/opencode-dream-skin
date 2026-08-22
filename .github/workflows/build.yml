@@ -1,0 +1,134 @@
+name: Build web + APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VITE_AUTH_ENABLED: "false"
+  NODE_VERSION: "22"
+
+jobs:
+  web:
+    name: 本体 (web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build web
+        run: npm run build
+
+      - name: Prepare Capacitor www
+        run: node scripts/prepare-apk-www.mjs
+
+      - name: Pack 本体 zip
+        run: |
+          mkdir -p release
+          (cd .vercel/output && zip -r "$GITHUB_WORKSPACE/release/opencode-web.zip" .)
+          (cd android-www && zip -r "$GITHUB_WORKSPACE/release/opencode-android-www.zip" .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-web
+          path: |
+            release/opencode-web.zip
+            release/opencode-android-www.zip
+            android-www
+          if-no-files-found: error
+
+  apk:
+    name: APK
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore android-www
+        uses: actions/download-artifact@v4
+        with:
+          name: opencode-web
+          path: _web_artifact
+
+      - name: Place www
+        run: |
+          rm -rf android-www
+          cp -a _web_artifact/android-www android-www
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Capacitor Android
+        run: |
+          npm install --no-save @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
+          npx cap add android
+          npx cap sync android
+          node scripts/patch-android.mjs
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Stage APK
+        run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/*.apk release/OpenCode.apk
+          cp _web_artifact/opencode-web.zip release/opencode-web.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-apk
+          path: release/OpenCode.apk
+          if-no-files-found: error
+
+      - name: Publish nightly
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly
+          prerelease: true
+          files: |
+            release/OpenCode.apk
+            release/opencode-web.zip
+          body: |
+            GitHub Actions 自动构建 `#${{ github.run_number }}`
+            - **APK** `OpenCode.apk`（debug，可直接安装）
+            - **本体** `opencode-web.zip`（Vercel/Nitro 产物）
+
+            commit `${{ github.sha }}`
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/OpenCode.apk
+            release/opencode-web.zip
+          generate_release_notes: true

@@ -1,0 +1,14 @@
+{
+  "appId": "xyz.opencode.dreamskin",
+  "appName": "OpenCode",
+  "webDir": "android-www",
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0d0d0e",
+    "webContentsDebuggingEnabled": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}
