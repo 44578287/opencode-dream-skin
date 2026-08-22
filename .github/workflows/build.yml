@@ -98,8 +98,13 @@ jobs:
       - name: Stage APK
         run: |
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/*.apk release/OpenCode.apk
-          cp _web_artifact/opencode-web.zip release/opencode-web.zip
+          APK=$(find android/app/build/outputs -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" release/OpenCode.apk
+          ZIP=$(find _web_artifact -name 'opencode-web.zip' | head -n 1)
+          test -n "$ZIP"
+          cp "$ZIP" release/opencode-web.zip
+          ls -lh release
 
       - uses: actions/upload-artifact@v4
         with:
