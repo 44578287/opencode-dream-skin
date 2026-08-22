@@ -26,7 +26,7 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build web
         run: npm run build
@@ -82,7 +82,7 @@ jobs:
           cp -a _web_artifact/android-www android-www
 
       - name: Install JS deps
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Capacitor Android
         run: |
