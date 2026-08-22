@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { pickAssets, prepareApkWww, renderIndexHtml } from "./prepare-apk-www.mjs";
+import {
+  assertHydratableHtml,
+  parseArgs,
+  pickAssets,
+  prepareApkWww,
+} from "./prepare-apk-www.mjs";
+
+const SSR = `<!DOCTYPE html><html><body><div class="desktop-scene" data-ds-part="root">OpenCode</div><script>self.$_TSR={}</script></body></html>`;
 
 describe("prepare-apk-www", () => {
   it("picks hashed client assets", () => {
@@ -13,32 +20,31 @@ describe("prepare-apk-www", () => {
     assert.equal(picked.stylesCss, "styles-q.css");
   });
 
-  it("renders a module-loading shell", () => {
-    const html = renderIndexHtml({
-      indexJs: "index-abc.js",
-      routesJs: "routes-xyz.js",
-      stylesCss: "styles-q.css",
-    });
-    assert.match(html, /assets\/index-abc\.js/);
-    assert.match(html, /assets\/styles-q\.css/);
-    assert.match(html, /modulepreload/);
+  it("rejects a client-only shell", () => {
+    assert.throws(() => assertHydratableHtml("<html><body><script src='./assets/index.js'></script></body></html>"));
   });
 
-  it("copies a vercel static build into android-www", () => {
+  it("parses CLI flags", () => {
+    assert.equal(parseArgs(["--from-preview", "http://127.0.0.1:8081/"]).previewUrl, "http://127.0.0.1:8081/");
+    assert.equal(parseArgs(["--html", "ssr.html"]).htmlPath, "ssr.html");
+  });
+
+  it("copies a vercel static build and writes SSR html", async () => {
     const root = mkdtempSync(join(tmpdir(), "apk-www-"));
     try {
       const assets = join(root, ".vercel/output/static/assets");
       mkdirSync(assets, { recursive: true });
       writeFileSync(join(assets, "index-TEST.js"), "console.log(1)");
-      writeFileSync(join(assets, "styles-TEST.css"), "body{}");
       writeFileSync(join(root, ".vercel/output/static/favicon.svg"), "<svg></svg>");
       mkdirSync(join(root, "public"), { recursive: true });
       writeFileSync(join(root, "public/sw.js"), "/* sw */");
+      writeFileSync(join(root, "ssr.html"), SSR);
 
-      const result = prepareApkWww(root);
+      const result = await prepareApkWww(root, { htmlPath: "ssr.html" });
       const html = readFileSync(join(result.out, "index.html"), "utf8");
       assert.equal(result.indexJs, "index-TEST.js");
-      assert.match(html, /index-TEST\.js/);
+      assert.match(html, /\$_TSR/);
+      assert.match(html, /desktop-scene/);
       assert.match(readFileSync(join(result.out, "sw.js"), "utf8"), /sw/);
     } finally {
       rmSync(root, { recursive: true, force: true });

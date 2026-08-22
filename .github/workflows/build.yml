@@ -32,7 +32,24 @@ jobs:
         run: npm run build
 
       - name: Prepare Capacitor www
-        run: node scripts/prepare-apk-www.mjs
+        run: |
+          npm run preview > preview.log 2>&1 &
+          preview_pid=$!
+          if ! timeout 90 bash -c 'until curl -sf -o /dev/null --max-time 1 http://127.0.0.1:8081/; do sleep 1; done'; then
+            echo "vite preview failed to start"
+            cat preview.log
+            kill "$preview_pid" || true
+            exit 1
+          fi
+          node scripts/prepare-apk-www.mjs --from-preview http://127.0.0.1:8081/
+          kill "$preview_pid" || true
+          grep -q '$_TSR' android-www/index.html
+          grep -q 'desktop-scene' android-www/index.html
+
+      - name: Smoke android-www
+        run: |
+          npx playwright install --with-deps chromium
+          node scripts/apk-www-smoke.mjs
 
       - name: Pack 本体 zip
         run: |
@@ -95,6 +112,15 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
+      - name: Verify APK ships SSR HTML
+        run: |
+          APK=$(find android/app/build/outputs -name '*.apk' | head -n 1)
+          test -n "$APK"
+          unzip -p "$APK" assets/public/index.html > /tmp/apk-index.html
+          grep -q '$_TSR' /tmp/apk-index.html
+          grep -q 'desktop-scene' /tmp/apk-index.html
+          wc -c /tmp/apk-index.html
+
       - name: Stage APK
         run: |
           mkdir -p release
@@ -128,6 +154,8 @@ jobs:
             - **本体** `opencode-web.zip`（Vercel/Nitro 产物）
 
             commit `${{ github.sha }}`
+
+            打开应能看到 OpenCode 界面（会话 / 连接主机）。若仍是全黑，卸掉旧包再装这一份。
 
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/v')
