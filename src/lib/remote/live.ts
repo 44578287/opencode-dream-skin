@@ -4,7 +4,7 @@ import { readSse } from "./sse";
 import { applyHostEvent } from "./apply-event";
 import { notifyHostEvent } from "@/lib/notify";
 import { authHeader, hostFetch } from "./http";
-import { hostBase } from "./types";
+import { hostBase, splitModel } from "./types";
 
 export type LiveHandle = { stop: () => void };
 
@@ -66,10 +66,11 @@ export async function sendPrompt(
   opts?: { model?: string; agent?: "build" | "plan" },
 ) {
   if (conn.kind === "offline") throw new Error("未连接主机");
+  const parsed = splitModel(opts?.model);
   const body = JSON.stringify({
     parts: [{ type: "text", text }],
     agent: opts?.agent,
-    model: opts?.model ? { providerID: "xai", modelID: opts.model.replace(/^xai\//, "") } : undefined,
+    model: parsed,
   });
   const asyncRes = await hostFetch(conn, `/session/${encodeURIComponent(sessionID)}/prompt_async`, {
     method: "POST",

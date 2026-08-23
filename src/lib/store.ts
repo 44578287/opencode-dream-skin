@@ -50,7 +50,9 @@ export type Session = {
 export type CustomTheme = CatalogEntry;
 
 export const MODELS = [
-  { id: "grok-4.5", label: "Grok 4.5", hint: "xAI · 默认" },
+  { id: "opencode/mimo-v2.5-free", label: "MiMo V2.5 Free", hint: "OpenCode 免费" },
+  { id: "opencode/hy3-free", label: "Hy3 Free", hint: "OpenCode 免费" },
+  { id: "opencode/big-pickle", label: "Big Pickle", hint: "OpenCode 免费" },
 ] as const;
 
 const SEED_VERSION = 7;
@@ -218,7 +220,7 @@ export const useApp = create<AppState>()(
           id: uid("sess"),
           title: "新会话",
           mode: get().sessions.find((s) => s.id === get().activeSessionId)?.mode ?? "build",
-          model: get().sessions.find((s) => s.id === get().activeSessionId)?.model ?? get().hostModels[0]?.id ?? "grok-4.5",
+          model: get().sessions.find((s) => s.id === get().activeSessionId)?.model ?? get().hostModels[0]?.id ?? MODELS[0].id,
           status: "idle",
           messages: [],
           updatedAt: Date.now(),
@@ -369,7 +371,7 @@ export const useApp = create<AppState>()(
       touch: () => bump(set),
     }),
     {
-      name: "opencode-desktop-v9",
+      name: "opencode-desktop-v10",
       partialize: (s) => ({
         themeId: s.themeId,
         appearance: s.appearance,

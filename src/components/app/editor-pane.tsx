@@ -22,6 +22,7 @@ export function EditorPane() {
   const [draft, setDraft] = useState(file?.content ?? "");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState("");
   const dirty = Boolean(file && draft !== file.content);
 
   useEffect(() => {
@@ -36,16 +37,19 @@ export function EditorPane() {
   async function save() {
     if (!openFile) return;
     setSaving(true);
-    setFileContent(openFile, draft);
+    setSaveNote("");
     try {
       if (connection.kind !== "offline") {
         await writeRemoteFile(connection, openFile, draft);
         const status = await fileStatus(connection).catch(() => []);
         useApp.getState().setFileStatus(status);
       }
+      setFileContent(openFile, draft);
+      setEditing(false);
+    } catch (err) {
+      setSaveNote(err instanceof Error ? err.message : "保存失败");
     } finally {
       setSaving(false);
-      setEditing(false);
     }
   }
 
@@ -53,6 +57,7 @@ export function EditorPane() {
     <div className="flex h-full min-w-0 flex-col bg-background" data-ds-part="main">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
         <p className="truncate font-mono text-[12px] text-muted">{openFile || "未打开文件"}</p>
+        {saveNote ? <p className="max-w-[40%] truncate text-[11px] text-warning">{saveNote}</p> : null}
         <div className="flex items-center gap-1">
           {rightView === "editor" && file ? (
             <Button

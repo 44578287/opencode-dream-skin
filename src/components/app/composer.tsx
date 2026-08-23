@@ -11,10 +11,10 @@ export function Composer({ onSend, disabled, compact }: { onSend: (text: string)
   const setModel = useApp((s) => s.setModel);
   const mode = session?.mode ?? "build";
   const hostModels = useApp((s) => s.hostModels);
-  const model = session?.model ?? hostModels[0]?.id ?? "grok-4.5";
+  const model = session?.model ?? hostModels[0]?.id ?? MODELS[0].id;
   const models = hostModels.length
     ? hostModels
-    : MODELS.map((m) => ({ id: m.id, label: m.label, provider: "xai" }));
+    : MODELS.map((m) => ({ id: m.id, label: m.label, provider: m.id.split("/")[0] ?? "opencode" }));
 
   function submit() {
     const text = value.trim();

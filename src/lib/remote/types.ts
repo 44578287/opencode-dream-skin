@@ -26,6 +26,7 @@ export type FileNode = {
   name: string;
   path: string;
   type: "file" | "directory";
+  ignored?: boolean;
 };
 
 export type SearchHit = {
@@ -110,3 +111,19 @@ export function hostBase(conn: Connection): string {
   if (conn.kind === "local") return localBase();
   return conn.url.trim().replace(/\/+$/, "");
 }
+
+export function splitModel(id?: string): { providerID: string; modelID: string } | undefined {
+  if (!id) return undefined;
+  const trimmed = id.trim();
+  if (!trimmed) return undefined;
+  const i = trimmed.indexOf("/");
+  if (i <= 0) return { providerID: "opencode", modelID: trimmed };
+  return { providerID: trimmed.slice(0, i), modelID: trimmed.slice(i + 1) };
+}
+
+export function modelKey(provider: string, model: string) {
+  if (!provider) return model;
+  if (model.startsWith(`${provider}/`)) return model;
+  return `${provider}/${model}`;
+}
+

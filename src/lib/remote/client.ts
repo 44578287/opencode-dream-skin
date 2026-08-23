@@ -1,5 +1,5 @@
 import type { Connection, FileNode, HostHealth, HostModel, SearchHit } from "./types";
-import { hostBase } from "./types";
+import { hostBase, modelKey } from "./types";
 import { HostError, hostFetch, hostJson } from "./http";
 import type { ChatMessage, Session, ToolCall } from "@/lib/store";
 
@@ -39,8 +39,8 @@ export async function probeConnection(conn: Connection): Promise<HostHealth> {
 }
 
 function labelOf(conn: Connection) {
-  if (conn.kind === "local") return "本机 Grok 引擎";
-  return conn.url.trim().replace(/\/+$/, "") || "远程主机";
+  if (conn.kind === "local") return "本机 OpenCode";
+  return conn.url.trim().replace(/\/+$/, "") || "OpenCode 主机";
 }
 
 type RawSession = {
@@ -54,7 +54,7 @@ export function mapSession(row: RawSession, extra?: Partial<Session>): Session {
     id: String(row.id ?? ""),
     title: row.title || "会话",
     mode: extra?.mode ?? "build",
-    model: extra?.model ?? "grok-4.5",
+    model: extra?.model ?? "",
     status: extra?.status ?? "idle",
     messages: extra?.messages ?? [],
     updatedAt: row.time?.updated ?? row.time?.created ?? Date.now(),
@@ -145,25 +145,57 @@ export async function listRemoteMessages(conn: Connection, sessionID: string): P
 export async function fetchProviders(conn: Connection): Promise<HostModel[]> {
   try {
     const body = await hostJson<{
-      providers?: Array<{ id?: string; name?: string; models?: Array<{ id?: string; name?: string }> }>;
-      all?: Array<{ id?: string; name?: string; models?: Array<{ id?: string; name?: string }> }>;
+      providers?: Array<{
+        id?: string;
+        name?: string;
+        models?: Array<{ id?: string; name?: string }> | Record<string, { id?: string; name?: string } | string>;
+      }>;
+      all?: Array<{
+        id?: string;
+        name?: string;
+        models?: Array<{ id?: string; name?: string }> | Record<string, { id?: string; name?: string } | string>;
+      }>;
     }>(conn, "/config/providers");
     const list = body.providers ?? body.all ?? [];
     const models: HostModel[] = [];
     for (const p of list) {
-      for (const m of p.models ?? []) {
+      const provider = p.id || p.name || "provider";
+      for (const m of normalizeModels(p.models)) {
         if (!m.id) continue;
+        if (/imagine|video|image/i.test(m.id)) continue;
         models.push({
-          id: m.id,
+          id: modelKey(provider, m.id),
           label: m.name || m.id,
-          provider: p.id || p.name || "provider",
+          provider,
         });
       }
     }
+    models.sort((a, b) => scoreModel(a) - scoreModel(b) || a.label.localeCompare(b.label));
     return models;
   } catch {
     return [];
   }
+}
+
+function normalizeModels(
+  raw: Array<{ id?: string; name?: string }> | Record<string, { id?: string; name?: string } | string> | undefined,
+): Array<{ id: string; name: string }> {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((m) => m.id).map((m) => ({ id: m.id!, name: m.name || m.id! }));
+  }
+  return Object.entries(raw).map(([id, m]) => {
+    if (m && typeof m === "object") return { id: m.id || id, name: m.name || id };
+    return { id, name: id };
+  });
+}
+
+function scoreModel(m: HostModel) {
+  if (/mimo-v2\.5-free/i.test(m.id)) return 0;
+  if (/\/.*free$/i.test(m.id) || /big-pickle/i.test(m.id)) return 1;
+  if (m.provider === "opencode") return 2;
+  if (/grok-4\.5/i.test(m.id)) return 3;
+  return 8;
 }
 
 export async function fetchProject(conn: Connection): Promise<{ name: string; path: string; branch: string }> {
@@ -173,7 +205,10 @@ export async function fetchProject(conn: Connection): Promise<{ name: string; pa
   try {
     const cur = await hostJson<{ name?: string; worktree?: string; directory?: string }>(conn, "/project/current");
     if (cur?.name) name = cur.name;
-    if (cur?.worktree) path = cur.worktree;
+    if (cur?.worktree) {
+      path = cur.worktree;
+      if (!cur.name) name = path.split("/").filter(Boolean).pop() || name;
+    }
   } catch {
     try {
       const p = await hostJson<{ directory?: string; worktree?: string }>(conn, "/path");
@@ -200,11 +235,12 @@ export async function listFileNodes(conn: Connection, path = "."): Promise<FileN
     if (Array.isArray(rows)) {
       return rows
         .map((r) => ({
-          name: r.name || (r.path ?? "").split("/").pop() || "",
-          path: r.path || "",
+          name: r.name || (r.path ?? "").split("/").filter(Boolean).pop() || "",
+          path: (r.path || "").replace(/\/+$/, ""),
           type: r.type === "directory" || r.type === "dir" ? ("directory" as const) : ("file" as const),
+          ignored: Boolean((r as { ignored?: boolean }).ignored),
         }))
-        .filter((r) => r.path || r.name);
+        .filter((r) => (r.path || r.name) && r.name !== ".git" && r.name !== "node_modules" && !r.ignored);
     }
   } catch {
     /* fallback */
@@ -237,8 +273,11 @@ export async function writeRemoteFile(conn: Connection, path: string, content: s
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, content }),
   });
-  if (!res.ok && res.status !== 404) throw new HostError(`保存失败 ${res.status}`, res.status);
-  return res.ok;
+  const type = res.headers.get("content-type") || "";
+  if (!res.ok || type.includes("text/html")) {
+    throw new HostError("这台 OpenCode 没有独立的保存接口。切到构建模式，让助手改文件。", res.status || 404);
+  }
+  return true;
 }
 
 export async function deleteRemoteFile(conn: Connection, path: string) {

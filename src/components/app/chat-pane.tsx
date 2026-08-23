@@ -31,7 +31,7 @@ export function ChatPane({
               先连上主机
             </p>
             <p className="mt-3 max-w-sm text-sm text-muted text-pretty">
-              打开连接页填入 OpenCode 主机地址。网页也可以直接用本机 Grok 引擎。
+              打开连接页填一次 OpenCode 地址。保存之后，下次打开会自动直连。
             </p>
           </>
         ) : skin ? (

@@ -117,7 +117,7 @@ export function DesktopShell() {
         ok: false,
         kind: conn.kind,
         version: "",
-        label: conn.kind === "local" ? "本机 Grok 引擎" : conn.url,
+        label: conn.kind === "local" ? "本机 OpenCode" : conn.url,
         error: err instanceof Error ? err.message : "无法创建会话",
       });
     }
@@ -271,13 +271,12 @@ export function DesktopShell() {
           <div className="max-h-[min(80vh,640px)] overflow-auto">
             <div className="space-y-3 border-b border-border px-4 pb-3 text-sm">
               <p className="text-muted">
-                这是 OpenCode 的远程客户端：连上官方 `opencode serve` 或使用本机 Grok 引擎。会话、文件、权限、提问走同一条实时通道。Dream Skin 主题可导入导出。
+                这是 OpenCode 的远程客户端。在连接页填一次主机地址，之后打开就会直连。模型、密钥都在 OpenCode 里配，这里不用填。
               </p>
               <div className="flex flex-wrap gap-2">
+                <Badge>直连 OpenCode</Badge>
                 <Badge>Dream Skin</Badge>
-                <Badge>ZIP 双向</Badge>
                 <Badge>实时事件流</Badge>
-                <Badge>Grok 4.5</Badge>
               </div>
             </div>
             <ConnectPane />

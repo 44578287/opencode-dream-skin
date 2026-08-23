@@ -45,7 +45,7 @@ export function applyHostEvent(event: HostEvent) {
           id: info.id,
           title: info.title || "远程会话",
           mode: "build",
-          model: "grok-4.5",
+          model: useApp.getState().hostModels[0]?.id || "opencode/mimo-v2.5-free",
           status: "idle",
           messages: [],
           updatedAt: info.time?.updated ?? Date.now(),

@@ -1,6 +1,6 @@
 # OpenCode Dream Skin
 
-生产级 OpenCode 客户端：Dream Skin 主题 + 官方 HTTP/SSE 协议。网页自带 Grok 4.5 引擎，手机 APK 接到你自己的 `opencode serve`。
+OpenCode 远程客户端：Dream Skin 主题 + 官方 HTTP/SSE。打开即直连你配置好的 `opencode serve`。密钥和模型都在 OpenCode 里配，客户端不填。
 
 | 产物 | 文件 | 说明 |
 | --- | --- | --- |
@@ -14,37 +14,29 @@
 
 ## 用法
 
-### 网页（本机 Grok 引擎）
-
-打开站点会自动接上本机引擎。可以对工作区提问、规划、改文件；写入和 shell 会先问权限。规划模式只读。
-
-### 接到真 OpenCode 主机
-
-1. 电脑上运行：
+1. 电脑上运行官方 OpenCode：
 
 ```bash
-opencode serve --port 4096 --cors <客户端来源>
+opencode serve --port 4096 --cors https://localhost
 ```
 
-手机 APK 的来源是 `https://localhost`。局域网示例：
+模型默认用 OpenCode 免费接口（`opencode/mimo-v2.5-free` 等）。要换模型在 OpenCode 里配，不要在客户端填密钥。
 
-```bash
-opencode serve --port 4096 --cors https://localhost --cors http://127.0.0.1:8080
-```
+2. 客户端「连接」页填 `http://<电脑IP>:4096`，点「保存并连接」。
+3. 之后每次打开都会自动接上同一台主机。
 
-2. 客户端「连接」页填 `http://<电脑IP>:4096`
-3. 可选 Basic 认证（`OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD`）
+网页预览会连本机官方 `opencode serve`（同源代理），同样不用填密钥。
 
-连上之后：会话、消息流、文件树、搜索、差异、保存、终端、权限、提问都走官方接口。
+连上之后：会话、消息流、文件树、搜索、权限、提问都走官方接口。
 
 ## 功能
 
-- 会话：新建 / 关闭 / 规划与构建模式 / 停止生成
-- 工作区：文件树、新建文件、打开、编辑保存、差异、搜索
-- 助手：Grok 4.5 流式输出，读文件 / 写文件 / 命令 / 提问
-- 权限：写入和 shell 先确认（这次允许 / 本会话都允许 / 拒绝）
+- 会话：新建 / 关闭 / 规划与构建 / 停止
+- 工作区：文件树、新建、打开、编辑、差异、搜索
+- 助手：主机上的模型流式输出（默认免费模型）
+- 权限：写入和 shell 先确认
 - 主题：Dream Skin 导入导出
-- 客户端：PWA、安卓 APK、系统通知
+- 客户端：PWA、安卓 APK、系统通知；主机地址只配一次
 
 ## 本地开发
 

@@ -4,30 +4,29 @@ import {
   createRemoteSession,
   fetchProject,
   fetchProviders,
-  fetchRemoteTheme,
   fileStatus,
   listFileNodes,
   listRemoteMessages,
   listRemoteSessions,
   probeConnection,
-  pushRemoteTheme,
   readRemoteFile,
 } from "@/lib/remote/client";
 import { startLive, type LiveHandle } from "@/lib/remote/live";
 import { isNativeShell, type Connection, type FileNode } from "@/lib/remote/types";
 
 async function collectFiles(conn: Connection, path: string, depth: number): Promise<FileNode[]> {
-  if (depth > 6) return [];
+  if (depth > 4) return [];
   const nodes = await listFileNodes(conn, path).catch(() => []);
   const out: FileNode[] = [];
   for (const node of nodes) {
+    if (node.ignored || node.name === ".git" || node.name === "node_modules") continue;
     if (node.type === "directory") {
       out.push(...(await collectFiles(conn, node.path || node.name, depth + 1)));
     } else {
       out.push(node);
     }
   }
-  return out.slice(0, 400);
+  return out.slice(0, 120);
 }
 
 export async function loadWorkspace(conn: Connection) {
@@ -35,22 +34,10 @@ export async function loadWorkspace(conn: Connection) {
   if (!state.syncFlags.files) return;
   const nodes = await collectFiles(conn, ".", 0);
   const files = { ...state.files };
-  const toLoad = nodes.filter((n) => n.type === "file").slice(0, 60);
-  await Promise.all(
-    toLoad.map(async (node) => {
-      try {
-        const content = await readRemoteFile(conn, node.path);
-        const prev = files[node.path];
-        files[node.path] = {
-          path: node.path,
-          content,
-          original: prev?.original && prev.original.length ? prev.original : content,
-        };
-      } catch {
-        if (!files[node.path]) files[node.path] = { path: node.path, content: "", original: "" };
-      }
-    }),
-  );
+  for (const node of nodes) {
+    if (node.type !== "file") continue;
+    if (!files[node.path]) files[node.path] = { path: node.path, content: "", original: "" };
+  }
   if (Object.keys(files).length) {
     useApp.getState().applyFiles(files);
     const first = Object.keys(files).sort()[0];
@@ -107,17 +94,17 @@ export async function runSync(direction: "pull" | "boot") {
       return;
     }
     const models = await fetchProviders(state.connection).catch(() => []);
-    if (models.length) state.setHostModels(models);
-    const project = await fetchProject(state.connection).catch(() => null);
-    if (project) state.setProjectMeta(project.name, project.branch);
-
-    if (state.syncFlags.theme) {
-      const theme = await fetchRemoteTheme(state.connection);
-      if (theme) useApp.getState().setTheme(theme);
-      else if (direction === "boot") {
-        await pushRemoteTheme(state.connection, state.themeId);
+    if (models.length) {
+      state.setHostModels(models);
+      const current = useApp.getState();
+      const active = current.sessions.find((s) => s.id === current.activeSessionId);
+      if (active && !active.model) {
+        const free = models.find((m) => /\/(.*free|big-pickle)$/i.test(m.id)) ?? models[0];
+        if (free) current.setModel(free.id);
       }
     }
+    const project = await fetchProject(state.connection).catch(() => null);
+    if (project) state.setProjectMeta(project.name, project.branch);
 
     if (state.syncFlags.sessions) {
       let sessions = await listRemoteSessions(state.connection);
@@ -145,7 +132,7 @@ export async function runSync(direction: "pull" | "boot") {
       ok: false,
       kind: state.connection.kind,
       version: "",
-      label: state.connection.kind === "local" ? "本机 Grok 引擎" : state.connection.url,
+      label: state.connection.kind === "local" ? "本机 OpenCode" : state.connection.url,
       error: err instanceof Error ? err.message : "同步失败",
     });
     state.markSynced(err instanceof Error ? err.message : "同步失败");
@@ -167,11 +154,12 @@ export function RemoteBridge() {
 
     const finish = () => {
       const state = useApp.getState();
-      if (isNativeShell()) {
+      const saved = state.connection;
+      if (saved.url.trim()) {
+        if (saved.kind !== "remote") state.setConnection({ kind: "remote" });
+      } else if (isNativeShell()) {
         state.setMobileTab("link");
-        if (state.connection.kind === "local") {
-          state.setConnection({ kind: "offline" });
-        }
+        if (saved.kind === "local") state.setConnection({ kind: "offline" });
       }
       setHydrated(true);
     };

@@ -100,22 +100,22 @@ export function ConnectPane() {
           >
             <span className="flex items-center gap-2">
               <Server className="size-3.5" />
-              本机 Grok 引擎
+              本机 OpenCode
             </span>
             <span className="mt-0.5 block text-[11px] text-muted">
-              直接用这台服务器上的 Grok 4.5 读写工作区。写入和命令会先问权限。
+              直连这台机器上的官方 `opencode serve`。模型在 OpenCode 里配，默认用免费模型，这里不用填密钥。
             </span>
           </button>
         )}
 
         <div className="rounded-md border border-border p-3">
-          <p className="text-sm">OpenCode 主机</p>
+          <p className="text-sm">保存主机，下次打开直连</p>
           <p className="mt-1 text-[11px] text-muted">
-            在电脑上运行{" "}
+            电脑上先跑{" "}
             <code className="rounded-sm bg-element px-1">
               opencode serve --port 4096 --cors {origin || "https://localhost"}
             </code>
-            ，然后填入地址。手机请用电脑的局域网 IP。
+            。填一次地址并连接，之后打开客户端会自动接上。密钥只在 OpenCode 里配。
           </p>
           <Input
             className="mt-2"
@@ -138,7 +138,7 @@ export function ConnectPane() {
               disabled={syncing || !url.trim()}
             >
               {syncing ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
-              连接
+              保存并连接
             </Button>
             <Button
               size="sm"
