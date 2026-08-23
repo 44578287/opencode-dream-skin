@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/lib/store";
 import {
   createRemoteSession,
+  fetchDefaultModel,
   fetchProject,
   fetchProviders,
   fileStatus,
@@ -94,15 +95,13 @@ export async function runSync(direction: "pull" | "boot") {
       return;
     }
     const models = await fetchProviders(state.connection).catch(() => []);
-    if (models.length) {
-      state.setHostModels(models);
-      const current = useApp.getState();
-      const active = current.sessions.find((s) => s.id === current.activeSessionId);
-      if (active && !active.model) {
-        const free = models.find((m) => /\/(.*free|big-pickle)$/i.test(m.id)) ?? models[0];
-        if (free) current.setModel(free.id);
-      }
-    }
+    const configured = await fetchDefaultModel(state.connection).catch(() => null);
+    if (models.length) state.setHostModels(models);
+    const pick =
+      (configured && (models.length === 0 || models.some((m) => m.id === configured)) ? configured : null) ??
+      models.find((m) => /xai\/grok-4\.5$/i.test(m.id))?.id ??
+      models[0]?.id;
+
     const project = await fetchProject(state.connection).catch(() => null);
     if (project) state.setProjectMeta(project.name, project.branch);
 
@@ -118,11 +117,17 @@ export async function runSync(direction: "pull" | "boot") {
       current.applySessions(
         sessions.map((s) => {
           const prev = current.sessions.find((p) => p.id === s.id);
-          return prev ? { ...s, messages: prev.messages, mode: prev.mode, model: prev.model || s.model } : s;
+          return prev
+            ? { ...s, messages: prev.messages, mode: prev.mode, model: prev.model || pick || s.model }
+            : { ...s, model: s.model || pick || "" };
         }),
         active,
       );
       if (active) await refreshActiveMessages(active);
+    } else if (pick) {
+      const current = useApp.getState();
+      const active = current.sessions.find((s) => s.id === current.activeSessionId);
+      if (active && !active.model) current.setModel(pick);
     }
 
     if (state.syncFlags.files) await loadWorkspace(state.connection);

@@ -50,9 +50,7 @@ export type Session = {
 export type CustomTheme = CatalogEntry;
 
 export const MODELS = [
-  { id: "opencode/mimo-v2.5-free", label: "MiMo V2.5 Free", hint: "OpenCode 免费" },
-  { id: "opencode/hy3-free", label: "Hy3 Free", hint: "OpenCode 免费" },
-  { id: "opencode/big-pickle", label: "Big Pickle", hint: "OpenCode 免费" },
+  { id: "xai/grok-4.5", label: "Grok 4.5", hint: "xAI · OpenCode" },
 ] as const;
 
 const SEED_VERSION = 7;

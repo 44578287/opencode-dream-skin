@@ -103,7 +103,7 @@ export function ConnectPane() {
               本机 OpenCode
             </span>
             <span className="mt-0.5 block text-[11px] text-muted">
-              直连这台机器上的官方 `opencode serve`。模型在 OpenCode 里配，默认用免费模型，这里不用填密钥。
+              直连官方 `opencode serve`，用的是 Grok 引擎。模型写在 OpenCode 的 `opencode.json` 里，这里不用填密钥。
             </span>
           </button>
         )}
@@ -115,7 +115,7 @@ export function ConnectPane() {
             <code className="rounded-sm bg-element px-1">
               opencode serve --port 4096 --cors {origin || "https://localhost"}
             </code>
-            。填一次地址并连接，之后打开客户端会自动接上。密钥只在 OpenCode 里配。
+            。填一次地址并连接，之后打开客户端会自动接上。Grok 密钥只配在 OpenCode，客户端不填。
           </p>
           <Input
             className="mt-2"

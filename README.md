@@ -20,7 +20,7 @@ OpenCode 远程客户端：Dream Skin 主题 + 官方 HTTP/SSE。打开即直连
 opencode serve --port 4096 --cors https://localhost
 ```
 
-模型默认用 OpenCode 免费接口（`opencode/mimo-v2.5-free` 等）。要换模型在 OpenCode 里配，不要在客户端填密钥。
+模型默认是 Grok 4.5，写在项目里的 `opencode.json`（`model: "xai/grok-4.5"`）。换模型只改 OpenCode 配置，客户端打开即用，不用填密钥。
 
 2. 客户端「连接」页填 `http://<电脑IP>:4096`，点「保存并连接」。
 3. 之后每次打开都会自动接上同一台主机。
@@ -33,7 +33,7 @@ opencode serve --port 4096 --cors https://localhost
 
 - 会话：新建 / 关闭 / 规划与构建 / 停止
 - 工作区：文件树、新建、打开、编辑、差异、搜索
-- 助手：主机上的模型流式输出（默认免费模型）
+- 助手：Grok 引擎经官方 OpenCode 流式输出（模型在 `opencode.json` 配）
 - 权限：写入和 shell 先确认
 - 主题：Dream Skin 导入导出
 - 客户端：PWA、安卓 APK、系统通知；主机地址只配一次

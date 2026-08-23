@@ -124,12 +124,18 @@ export function mapMessages(rows: RawMessage[]): ChatMessage[] {
     const infoObj = (row.info ?? {
       id: row.id,
       role: row.role,
-    }) as { id?: string; role?: string; time?: { created?: number; completed?: number } };
+    }) as {
+      id?: string;
+      role?: string;
+      time?: { created?: number; completed?: number };
+      error?: { message?: string; data?: { message?: string } };
+    };
     const role = (infoObj.role === "user" ? "user" : "assistant") as ChatMessage["role"];
+    const errText = infoObj.error?.data?.message || infoObj.error?.message || "";
     return {
       id: String(infoObj.id ?? ""),
       role,
-      content: text,
+      content: text || errText,
       tools: tools.length ? tools : undefined,
       streaming: role === "assistant" && !infoObj.time?.completed,
       createdAt: infoObj.time?.created ?? Date.now(),
@@ -191,11 +197,20 @@ function normalizeModels(
 }
 
 function scoreModel(m: HostModel) {
-  if (/mimo-v2\.5-free/i.test(m.id)) return 0;
-  if (/\/.*free$/i.test(m.id) || /big-pickle/i.test(m.id)) return 1;
-  if (m.provider === "opencode") return 2;
-  if (/grok-4\.5/i.test(m.id)) return 3;
+  if (/xai\/grok-4\.5$/i.test(m.id) || /\/grok-4\.5$/i.test(m.id)) return 0;
+  if (m.provider === "xai" && /grok-4/i.test(m.id)) return 1;
+  if (m.provider === "xai") return 2;
+  if (/\/.*free$/i.test(m.id) || /big-pickle/i.test(m.id)) return 6;
   return 8;
+}
+
+export async function fetchDefaultModel(conn: Connection): Promise<string | null> {
+  try {
+    const cfg = await hostJson<{ model?: string }>(conn, "/config");
+    return typeof cfg?.model === "string" && cfg.model ? cfg.model : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchProject(conn: Connection): Promise<{ name: string; path: string; branch: string }> {
