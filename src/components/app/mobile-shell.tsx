@@ -17,14 +17,21 @@ const TABS: { id: MobileTab; label: string; icon: typeof MessageSquare }[] = [
   { id: "skin", label: "皮肤", icon: Palette },
 ];
 
-export function MobileShell({ onSend, sending }: { onSend: (text: string) => void; sending: boolean }) {
+export function MobileShell({
+  onSend,
+  sending,
+  onNew,
+}: {
+  onSend: (text: string) => void;
+  sending: boolean;
+  onNew?: () => void;
+}) {
   const tab = useApp((s) => s.mobileTab);
   const setTab = useApp((s) => s.setMobileTab);
   const sessions = useApp((s) => s.sessions);
   const activeId = useApp((s) => s.activeSessionId);
   const session = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const setActive = useApp((s) => s.setActiveSession);
-  const newSession = useApp((s) => s.newSession);
   const theme = findTheme(useApp((s) => s.themeId));
   const host = useApp((s) => s.host);
   const connection = useApp((s) => s.connection);
@@ -43,9 +50,9 @@ export function MobileShell({ onSend, sending }: { onSend: (text: string) => voi
         </div>
         <span className={cn("flex items-center gap-1 rounded-full px-2 py-1 text-[10px]", online ? "bg-element text-primary" : "text-muted")}>
           {online ? <Cloud className="size-3" /> : <CloudOff className="size-3" />}
-          {online ? "已同步" : "本机"}
+          {online ? "已连接" : connection.kind === "offline" ? "未连接" : "连接中"}
         </span>
-        <Button variant="ghost" size="icon-sm" onClick={newSession} aria-label="新会话">
+        <Button variant="ghost" size="icon-sm" onClick={() => onNew?.()} aria-label="新会话">
           <Plus className="size-4" />
         </Button>
       </header>
@@ -73,7 +80,7 @@ export function MobileShell({ onSend, sending }: { onSend: (text: string) => voi
             <ChatPane messages={session?.messages ?? []} running={sending} />
           </div>
           <LivePrompts sessionId={session?.id} />
-          <Composer onSend={onSend} disabled={false} compact />
+          <Composer onSend={onSend} disabled={connection.kind === "offline"} compact />
         </div>
       ) : null}
 

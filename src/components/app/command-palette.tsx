@@ -10,13 +10,14 @@ import {
   Terminal,
 } from "lucide-react";
 import { allThemes, useApp } from "@/lib/store";
+import { createRemoteSession } from "@/lib/remote/client";
+import { ensureFileLoaded } from "./remote-bridge";
 
 export function CommandPalette() {
   const open = useApp((s) => s.commandOpen);
   const setOpen = useApp((s) => s.setCommandOpen);
   const files = useApp((s) => s.files);
   const setOpenFile = useApp((s) => s.setOpenFile);
-  const newSession = useApp((s) => s.newSession);
   const setMode = useApp((s) => s.setMode);
   const setThemeOpen = useApp((s) => s.setThemeOpen);
   const setTheme = useApp((s) => s.setTheme);
@@ -44,7 +45,23 @@ export function CommandPalette() {
         <Command.List className="max-h-80 overflow-auto p-1">
           <Command.Empty className="px-3 py-6 text-center text-xs text-muted">没有匹配</Command.Empty>
           <Command.Group heading="工作台" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-muted">
-            <Item icon={Plus} label="新会话" onSelect={() => { newSession(); setOpen(false); }} />
+            <Item
+              icon={Plus}
+              label="新会话"
+              onSelect={() => {
+                const conn = useApp.getState().connection;
+                if (conn.kind === "offline") {
+                  useApp.getState().setSettingsOpen(true);
+                  setOpen(false);
+                  return;
+                }
+                void createRemoteSession(conn).then((s) => {
+                  useApp.getState().hydrateSession(s);
+                  useApp.getState().setActiveSession(s.id);
+                });
+                setOpen(false);
+              }}
+            />
             <Item icon={Hammer} label="切换到构建模式" onSelect={() => { setMode("build"); setOpen(false); }} />
             <Item icon={Map} label="切换到规划模式" onSelect={() => { setMode("plan"); setOpen(false); }} />
             <Item icon={Palette} label="打开主题工作室" onSelect={() => { setThemeOpen(true); setOpen(false); }} />
@@ -60,6 +77,7 @@ export function CommandPalette() {
                 label={path}
                 onSelect={() => {
                   setOpenFile(path);
+                  void ensureFileLoaded(path);
                   setOpen(false);
                 }}
               />

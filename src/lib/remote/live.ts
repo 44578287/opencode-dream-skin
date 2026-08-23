@@ -2,27 +2,18 @@ import type { Connection } from "./types";
 import type { HostEvent, PermissionReply } from "./events";
 import { readSse } from "./sse";
 import { applyHostEvent } from "./apply-event";
-import { demoPrompt, resolveDemoPermission, resolveDemoQuestion, subscribeDemo, resetDemoBus } from "./demo-bus";
 import { notifyHostEvent } from "@/lib/notify";
-
-function authHeader(conn: Connection): Record<string, string> {
-  if (!conn.password) return {};
-  const token = btoa(`${conn.username || "opencode"}:${conn.password}`);
-  return { Authorization: `Basic ${token}` };
-}
-
-function trimUrl(url: string) {
-  return url.trim().replace(/\/+$/, "");
-}
+import { authHeader, hostFetch } from "./http";
+import { hostBase } from "./types";
 
 export type LiveHandle = { stop: () => void };
 
-/** Open a long-lived OpenCode event stream. Demo uses the in-process bus. */
 export function startLive(conn: Connection, onEvent?: (event: HostEvent) => void): LiveHandle {
   let stopped = false;
   let abort: AbortController | null = null;
-  let unsub: (() => void) | null = null;
   let retry = 0;
+  const base = hostBase(conn);
+  if (conn.kind === "offline" || !base) return { stop: () => undefined };
 
   const dispatch = (event: HostEvent) => {
     if (stopped) return;
@@ -30,22 +21,6 @@ export function startLive(conn: Connection, onEvent?: (event: HostEvent) => void
     notifyHostEvent(event);
     onEvent?.(event);
   };
-
-  if (conn.kind === "offline") return { stop: () => undefined };
-
-  if (conn.kind === "demo") {
-    unsub = subscribeDemo(dispatch);
-    dispatch({ type: "server.connected" });
-    return {
-      stop: () => {
-        stopped = true;
-        unsub?.();
-      },
-    };
-  }
-
-  const base = trimUrl(conn.url);
-  if (!base) return { stop: () => undefined };
 
   const connect = async () => {
     while (!stopped) {
@@ -55,18 +30,17 @@ export function startLive(conn: Connection, onEvent?: (event: HostEvent) => void
           headers: { ...authHeader(conn), Accept: "text/event-stream" },
           signal: abort.signal,
         });
-        if (!res.ok || !res.body) {
+        let body = res.ok ? res.body : null;
+        if (!body) {
           const global = await fetch(`${base}/global/event`, {
             headers: { ...authHeader(conn), Accept: "text/event-stream" },
             signal: abort.signal,
           });
           if (!global.ok || !global.body) throw new Error(`事件流 ${res.status}`);
-          retry = 0;
-          for await (const event of readSse(global.body)) dispatch(event);
-        } else {
-          retry = 0;
-          for await (const event of readSse(res.body)) dispatch(event);
+          body = global.body;
         }
+        retry = 0;
+        for await (const event of readSse(body)) dispatch(event);
       } catch (err) {
         if (stopped || (err instanceof DOMException && err.name === "AbortError")) return;
       }
@@ -85,95 +59,74 @@ export function startLive(conn: Connection, onEvent?: (event: HostEvent) => void
   };
 }
 
-export async function sendPrompt(conn: Connection, sessionID: string, text: string) {
-  if (conn.kind === "demo") {
-    void demoPrompt(sessionID, text);
-    return;
-  }
-  if (conn.kind !== "remote") throw new Error("未连接");
-  const base = trimUrl(conn.url);
-  const headers = { ...authHeader(conn), "Content-Type": "application/json" };
-  const body = JSON.stringify({ parts: [{ type: "text", text }] });
-  const asyncRes = await fetch(`${base}/session/${encodeURIComponent(sessionID)}/prompt_async`, {
+export async function sendPrompt(
+  conn: Connection,
+  sessionID: string,
+  text: string,
+  opts?: { model?: string; agent?: "build" | "plan" },
+) {
+  if (conn.kind === "offline") throw new Error("未连接主机");
+  const body = JSON.stringify({
+    parts: [{ type: "text", text }],
+    agent: opts?.agent,
+    model: opts?.model ? { providerID: "xai", modelID: opts.model.replace(/^xai\//, "") } : undefined,
+  });
+  const asyncRes = await hostFetch(conn, `/session/${encodeURIComponent(sessionID)}/prompt_async`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body,
   });
   if (asyncRes.status === 204 || asyncRes.ok) return;
-  const wait = await fetch(`${base}/session/${encodeURIComponent(sessionID)}/message`, {
+  const wait = await hostFetch(conn, `/session/${encodeURIComponent(sessionID)}/message`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body,
   });
   if (!wait.ok) throw new Error(`发送失败 ${wait.status}`);
 }
 
 export async function abortSession(conn: Connection, sessionID: string) {
-  if (conn.kind === "demo") {
-    resetDemoBus();
-    applyHostEvent({ type: "session.idle", properties: { sessionID } });
-    return;
-  }
-  if (conn.kind !== "remote") return;
-  const base = trimUrl(conn.url);
-  await fetch(`${base}/session/${encodeURIComponent(sessionID)}/abort`, {
-    method: "POST",
-    headers: authHeader(conn),
-  }).catch(() => undefined);
+  if (conn.kind === "offline") return;
+  await hostFetch(conn, `/session/${encodeURIComponent(sessionID)}/abort`, { method: "POST" }).catch(() => undefined);
 }
 
 export async function replyPermission(conn: Connection, sessionID: string, requestID: string, reply: PermissionReply) {
-  if (conn.kind === "demo") {
-    resolveDemoPermission(requestID, reply);
-    return;
-  }
-  if (conn.kind !== "remote") return;
-  const base = trimUrl(conn.url);
-  const headers = { ...authHeader(conn), "Content-Type": "application/json" };
-  const res = await fetch(
-    `${base}/session/${encodeURIComponent(sessionID)}/permissions/${encodeURIComponent(requestID)}`,
-    { method: "POST", headers, body: JSON.stringify({ reply }) },
-  );
+  if (conn.kind === "offline") return;
+  const headers = { "Content-Type": "application/json" };
+  const res = await hostFetch(conn, `/session/${encodeURIComponent(sessionID)}/permissions/${encodeURIComponent(requestID)}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ response: reply, reply }),
+  });
   if (!res.ok) {
-    await fetch(`${base}/permission/${encodeURIComponent(requestID)}/reply`, {
+    await hostFetch(conn, `/permission/${encodeURIComponent(requestID)}/reply`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ reply }),
+      body: JSON.stringify({ response: reply, reply }),
     }).catch(() => undefined);
   }
 }
 
 export async function replyQuestion(conn: Connection, requestID: string, answers: string[][]) {
-  if (conn.kind === "demo") {
-    resolveDemoQuestion(requestID, answers);
-    return;
-  }
-  if (conn.kind !== "remote") return;
-  const base = trimUrl(conn.url);
-  const headers = { ...authHeader(conn), "Content-Type": "application/json" };
-  const res = await fetch(`${base}/question/${encodeURIComponent(requestID)}/reply`, {
+  if (conn.kind === "offline") return;
+  await hostFetch(conn, `/question/${encodeURIComponent(requestID)}/reply`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ answers }),
-  });
-  if (!res.ok) {
-    await fetch(`${base}/session/question/${encodeURIComponent(requestID)}/reply`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ answers }),
-    }).catch(() => undefined);
-  }
+  }).catch(() => undefined);
 }
 
 export async function rejectQuestion(conn: Connection, requestID: string) {
-  if (conn.kind === "demo") {
-    resolveDemoQuestion(requestID, "reject");
-    return;
-  }
-  if (conn.kind !== "remote") return;
-  const base = trimUrl(conn.url);
-  await fetch(`${base}/question/${encodeURIComponent(requestID)}/reject`, {
+  if (conn.kind === "offline") return;
+  await hostFetch(conn, `/question/${encodeURIComponent(requestID)}/reject`, { method: "POST" }).catch(() => undefined);
+}
+
+export async function runShell(conn: Connection, sessionID: string, command: string) {
+  if (conn.kind === "offline") throw new Error("未连接主机");
+  const res = await hostFetch(conn, `/session/${encodeURIComponent(sessionID)}/shell`, {
     method: "POST",
-    headers: authHeader(conn),
-  }).catch(() => undefined);
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command, agent: "build" }),
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`命令失败 ${res.status}`);
 }

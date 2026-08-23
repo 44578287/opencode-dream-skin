@@ -1,13 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { uid } from "./utils";
-import { seedFiles, type VFile } from "./workspace";
+import type { VFile } from "./workspace";
 import { DEFAULT_THEME_ID, DREAM_SKIN_CATALOG, THEME_CATALOG, type Appearance, type CatalogEntry, type OpenCodeThemeFile } from "./theme";
 import {
   DEFAULT_CONNECTION,
   DEFAULT_SYNC_FLAGS,
   type Connection,
   type HostHealth,
+  type HostModel,
+  type SearchHit,
   type SyncBundle,
   type SyncFlags,
 } from "./remote/types";
@@ -49,117 +51,9 @@ export type CustomTheme = CatalogEntry;
 
 export const MODELS = [
   { id: "grok-4.5", label: "Grok 4.5", hint: "xAI · 默认" },
-  { id: "grok-4.5-fast", label: "Grok 4.5 Fast", hint: "更快、更短" },
 ] as const;
 
-const SEED_VERSION = 6;
-
-function demoSessions(): Session[] {
-  const now = Date.now();
-  return [
-    {
-      id: "sess-logger",
-      title: "给 logger 加上请求耗时",
-      mode: "build",
-      model: "grok-4.5",
-      status: "idle",
-      updatedAt: now - 1000 * 60 * 12,
-      messages: [
-        {
-          id: "m1",
-          role: "user",
-          content: "给 harbor 的 logger 中间件补上请求耗时，并在 README 里提一句。",
-          createdAt: now - 1000 * 60 * 14,
-        },
-        {
-          id: "m2",
-          role: "assistant",
-          content: "先看现有中间件和入口，确认现在怎么打日志。",
-          tools: [
-            {
-              id: "t1",
-              name: "read_file",
-              args: { path: "harbor/src/middleware/logger.ts" },
-              result: "8 行 · 已读取",
-              status: "ok",
-            },
-            {
-              id: "t2",
-              name: "read_file",
-              args: { path: "harbor/src/index.ts" },
-              result: "16 行 · 已读取",
-              status: "ok",
-            },
-          ],
-          createdAt: now - 1000 * 60 * 13,
-        },
-        {
-          id: "m3",
-          role: "assistant",
-          content:
-            "已在 `logger` 里记录 `Date.now()` 差值，并在 README 的 Scripts 下补了一句约定。构建模式直接改了工作区文件，右侧差异里可以核对。",
-          tools: [
-            {
-              id: "t3",
-              name: "write_file",
-              args: { path: "harbor/src/middleware/logger.ts" },
-              result: "已写入 · +2 / −1",
-              status: "ok",
-            },
-            {
-              id: "t4",
-              name: "write_file",
-              args: { path: "harbor/README.md" },
-              result: "已写入 · +1",
-              status: "ok",
-            },
-          ],
-          createdAt: now - 1000 * 60 * 12,
-        },
-      ],
-    },
-    {
-      id: "sess-new",
-      title: "新会话",
-      mode: "plan",
-      model: "grok-4.5",
-      status: "idle",
-      updatedAt: now,
-      messages: [],
-    },
-  ];
-}
-
-function demoFiles(): Record<string, VFile> {
-  const files = seedFiles();
-  files["harbor/src/middleware/logger.ts"] = {
-    ...files["harbor/src/middleware/logger.ts"],
-    content: `import type { Middleware } from "../types.ts";
-
-export const logger: Middleware = async (req, _res, next) => {
-  const start = Date.now();
-  await next();
-  const ms = Date.now() - start;
-  console.log(\`\${req.method} \${req.url} \${ms}ms\`);
-};
-`,
-  };
-  files["harbor/README.md"] = {
-    ...files["harbor/README.md"],
-    content: `# Harbor
-
-A tiny TypeScript HTTP router. Used as the OpenCode desktop workspace.
-
-## Scripts
-
-- \`npm test\` — run unit tests
-- \`npm run dev\` — start the sample server
-
-Logger prints method, URL, and elapsed milliseconds per request.
-`,
-  };
-  return files;
-}
+const SEED_VERSION = 7;
 
 function bump(set: (partial: Partial<AppState>) => void, extra: Partial<AppState> = {}) {
   set({ localRevisedAt: Date.now(), ...extra });
@@ -182,9 +76,14 @@ type AppState = {
   terminalOpen: boolean;
   mobileTab: MobileTab;
   searchQuery: string;
+  searchHits: SearchHit[];
+  fileStatus: { path: string; status: string }[];
   connection: Connection;
   syncFlags: SyncFlags;
   host: HostHealth | null;
+  hostModels: HostModel[];
+  projectName: string;
+  projectBranch: string;
   lastSyncAt: number | null;
   lastSyncNote: string | null;
   localRevisedAt: number;
@@ -203,12 +102,16 @@ type AppState = {
   setSettingsOpen: (open: boolean) => void;
   setTerminalOpen: (open: boolean) => void;
   setSearchQuery: (q: string) => void;
+  setSearchHits: (hits: SearchHit[]) => void;
+  setFileStatus: (rows: { path: string; status: string }[]) => void;
   setOpenFile: (path: string) => void;
   setFileContent: (path: string, content: string) => void;
   applyFiles: (next: Record<string, VFile>) => void;
+  upsertFile: (file: VFile) => void;
   setActiveSession: (id: string) => void;
-  newSession: () => void;
+  newSession: () => Session;
   closeSession: (id: string) => void;
+  applySessions: (sessions: Session[], activeSessionId?: string) => void;
   patchSession: (id: string, patch: Partial<Session>) => void;
   appendMessage: (sessionId: string, message: ChatMessage) => void;
   replaceMessage: (sessionId: string, message: ChatMessage) => void;
@@ -216,6 +119,7 @@ type AppState = {
   appendDelta: (sessionId: string, messageId: string, delta: string) => void;
   upsertTool: (sessionId: string, messageId: string, tool: ToolCall) => void;
   hydrateSession: (session: Session) => void;
+  setSessionMessages: (sessionId: string, messages: ChatMessage[]) => void;
   finishStreaming: (sessionId: string) => void;
   setLive: (patch: Partial<AppState["live"]>) => void;
   upsertPermission: (request: PermissionRequest) => void;
@@ -227,6 +131,8 @@ type AppState = {
   setConnection: (patch: Partial<Connection>) => void;
   setSyncFlags: (patch: Partial<SyncFlags>) => void;
   setHost: (host: HostHealth | null) => void;
+  setHostModels: (models: HostModel[]) => void;
+  setProjectMeta: (name: string, branch: string) => void;
   setSyncing: (syncing: boolean) => void;
   markSynced: (note: string) => void;
   applyBundle: (bundle: SyncBundle) => void;
@@ -241,21 +147,26 @@ export const useApp = create<AppState>()(
       themeId: DEFAULT_THEME_ID,
       appearance: "dark",
       customThemes: [],
-      sessions: demoSessions(),
-      activeSessionId: "sess-new",
-      files: demoFiles(),
-      openFile: "harbor/src/middleware/logger.ts",
+      sessions: [],
+      activeSessionId: "",
+      files: {},
+      openFile: "",
       rail: "sessions",
-      rightView: "diff",
+      rightView: "editor",
       commandOpen: false,
       themeOpen: false,
       settingsOpen: false,
       terminalOpen: false,
       mobileTab: "chat",
       searchQuery: "",
+      searchHits: [],
+      fileStatus: [],
       connection: DEFAULT_CONNECTION,
       syncFlags: DEFAULT_SYNC_FLAGS,
       host: null,
+      hostModels: [],
+      projectName: "workspace",
+      projectBranch: "main",
       lastSyncAt: null,
       lastSyncNote: null,
       localRevisedAt: Date.now(),
@@ -292,31 +203,39 @@ export const useApp = create<AppState>()(
       setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
       setTerminalOpen: (terminalOpen) => set({ terminalOpen }),
       setSearchQuery: (searchQuery) => set({ searchQuery }),
+      setSearchHits: (searchHits) => set({ searchHits }),
+      setFileStatus: (fileStatus) => set({ fileStatus }),
       setOpenFile: (openFile) => set({ openFile, rightView: "editor" }),
       setFileContent: (path, content) =>
         bump(set, {
           files: { ...get().files, [path]: { ...get().files[path], path, content, original: get().files[path]?.original ?? content } },
         }),
       applyFiles: (next) => bump(set, { files: next }),
+      upsertFile: (file) => bump(set, { files: { ...get().files, [file.path]: file } }),
       setActiveSession: (activeSessionId) => set({ activeSessionId }),
       newSession: () => {
         const session: Session = {
           id: uid("sess"),
           title: "新会话",
           mode: get().sessions.find((s) => s.id === get().activeSessionId)?.mode ?? "build",
-          model: get().sessions.find((s) => s.id === get().activeSessionId)?.model ?? "grok-4.5",
+          model: get().sessions.find((s) => s.id === get().activeSessionId)?.model ?? get().hostModels[0]?.id ?? "grok-4.5",
           status: "idle",
           messages: [],
           updatedAt: Date.now(),
         };
         bump(set, { sessions: [session, ...get().sessions], activeSessionId: session.id });
+        return session;
       },
       closeSession: (id) => {
-        const next = get().sessions.filter((s) => s.id !== id);
-        const sessions = next.length ? next : demoSessions().slice(1);
-        const activeSessionId = get().activeSessionId === id ? sessions[0].id : get().activeSessionId;
+        const sessions = get().sessions.filter((s) => s.id !== id);
+        const activeSessionId = get().activeSessionId === id ? (sessions[0]?.id ?? "") : get().activeSessionId;
         bump(set, { sessions, activeSessionId });
       },
+      applySessions: (sessions, activeSessionId) =>
+        set({
+          sessions,
+          activeSessionId: activeSessionId ?? get().activeSessionId ?? sessions[0]?.id ?? "",
+        }),
       patchSession: (id, patch) =>
         bump(set, {
           sessions: get().sessions.map((s) => (s.id === id ? { ...s, ...patch, updatedAt: Date.now() } : s)),
@@ -338,7 +257,7 @@ export const useApp = create<AppState>()(
       removeMessage: (sessionId, messageId) =>
         bump(set, {
           sessions: get().sessions.map((s) =>
-            s.id === sessionId ? { ...s, messages: s.messages.filter((m) => m.id !== messageId), updatedAt: Date.now() } : s,
+            s.id === sessionId ? { ...s, messages: s.messages.filter((m) => m.id !== messageId) } : s,
           ),
         }),
       appendDelta: (sessionId, messageId, delta) =>
@@ -381,10 +300,14 @@ export const useApp = create<AppState>()(
       hydrateSession: (session) =>
         set((s) => {
           if (s.sessions.some((x) => x.id === session.id)) {
-            return { sessions: s.sessions.map((x) => (x.id === session.id ? { ...x, ...session, messages: x.messages.length ? x.messages : session.messages } : x)) };
+            return { sessions: s.sessions.map((x) => (x.id === session.id ? { ...x, ...session, messages: session.messages.length ? session.messages : x.messages } : x)) };
           }
-          return { sessions: [session, ...s.sessions] };
+          return { sessions: [session, ...s.sessions], activeSessionId: s.activeSessionId || session.id };
         }),
+      setSessionMessages: (sessionId, messages) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) => (sess.id === sessionId ? { ...sess, messages } : sess)),
+        })),
       finishStreaming: (sessionId) =>
         set((s) => ({
           sessions: s.sessions.map((sess) =>
@@ -419,6 +342,8 @@ export const useApp = create<AppState>()(
       setConnection: (patch) => set({ connection: { ...get().connection, ...patch } }),
       setSyncFlags: (patch) => set({ syncFlags: { ...get().syncFlags, ...patch } }),
       setHost: (host) => set({ host }),
+      setHostModels: (hostModels) => set({ hostModels }),
+      setProjectMeta: (projectName, projectBranch) => set({ projectName, projectBranch }),
       setSyncing: (syncing) => set({ syncing }),
       markSynced: (note) => set({ lastSyncAt: Date.now(), lastSyncNote: note, syncing: false }),
       applyBundle: (bundle) =>
@@ -444,27 +369,36 @@ export const useApp = create<AppState>()(
       touch: () => bump(set),
     }),
     {
-      name: "opencode-desktop-v6",
+      name: "opencode-desktop-v9",
       partialize: (s) => ({
         themeId: s.themeId,
         appearance: s.appearance,
         customThemes: s.customThemes,
-        sessions: s.sessions,
-        activeSessionId: s.activeSessionId,
-        connection: { ...s.connection, password: s.connection.kind === "remote" ? s.connection.password : "" },
+        connection: {
+          kind: s.connection.kind,
+          url: s.connection.url,
+          username: s.connection.username,
+          password: s.connection.kind === "remote" ? s.connection.password : "",
+        },
         syncFlags: s.syncFlags,
       }),
       merge: (persisted, current) => {
-        const p = persisted as Partial<AppState> | undefined;
+        const p = persisted as Partial<AppState> & { connection?: Connection & { kind?: string } } | undefined;
         if (!p) return current;
+        let kind = (p.connection?.kind as string | undefined) ?? current.connection.kind;
+        if (kind === "demo") kind = "local";
+        if (kind !== "offline" && kind !== "local" && kind !== "remote") kind = "offline";
         return {
           ...current,
           themeId: p.themeId ?? current.themeId,
           appearance: p.appearance ?? current.appearance,
           customThemes: p.customThemes ?? current.customThemes,
-          sessions: p.sessions?.length ? p.sessions : current.sessions,
-          activeSessionId: p.activeSessionId ?? current.activeSessionId,
-          connection: p.connection ?? current.connection,
+          connection: {
+            ...current.connection,
+            ...p.connection,
+            kind: kind as Connection["kind"],
+            password: kind === "remote" ? (p.connection?.password ?? "") : "",
+          },
           syncFlags: p.syncFlags ?? current.syncFlags,
         };
       },

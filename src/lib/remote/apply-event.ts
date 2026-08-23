@@ -45,7 +45,7 @@ export function applyHostEvent(event: HostEvent) {
           id: info.id,
           title: info.title || "远程会话",
           mode: "build",
-          model: "remote",
+          model: "grok-4.5",
           status: "idle",
           messages: [],
           updatedAt: info.time?.updated ?? Date.now(),
@@ -53,9 +53,13 @@ export function applyHostEvent(event: HostEvent) {
       }
       return;
     }
-    case "session.deleted":
-      state.closeSession(event.properties.info.id);
+    case "session.deleted": {
+      const id = event.properties.info.id;
+      const next = state.sessions.filter((s) => s.id !== id);
+      const activeSessionId = state.activeSessionId === id ? (next[0]?.id ?? "") : state.activeSessionId;
+      state.applySessions(next, activeSessionId);
       return;
+    }
     case "session.status":
       state.patchSession(event.properties.sessionID, { status: asSessionStatus(event.properties.status) });
       return;

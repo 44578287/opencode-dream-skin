@@ -1,7 +1,7 @@
 import type { Appearance, CatalogEntry } from "@/lib/theme";
 import type { VFile } from "@/lib/workspace";
 
-export type ConnectionKind = "offline" | "demo" | "remote";
+export type ConnectionKind = "offline" | "local" | "remote";
 
 export type Connection = {
   kind: ConnectionKind;
@@ -14,6 +14,24 @@ export type SyncFlags = {
   theme: boolean;
   sessions: boolean;
   files: boolean;
+};
+
+export type HostModel = {
+  id: string;
+  label: string;
+  provider: string;
+};
+
+export type FileNode = {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+};
+
+export type SearchHit = {
+  path: string;
+  line: number;
+  text: string;
 };
 
 export type SyncSession = {
@@ -58,7 +76,7 @@ export type HostHealth = {
 };
 
 export const DEFAULT_CONNECTION: Connection = {
-  kind: "demo",
+  kind: "local",
   url: "",
   username: "opencode",
   password: "",
@@ -69,3 +87,26 @@ export const DEFAULT_SYNC_FLAGS: SyncFlags = {
   sessions: true,
   files: true,
 };
+
+export function isNativeShell() {
+  if (typeof window === "undefined") return false;
+  const cap = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  if (cap?.isNativePlatform?.() || cap) return true;
+  try {
+    const u = new URL(window.location.href);
+    return u.protocol === "https:" && u.hostname === "localhost" && u.port === "";
+  } catch {
+    return false;
+  }
+}
+
+export function localBase(): string {
+  if (typeof window === "undefined") return "/api/oc";
+  return `${window.location.origin}/api/oc`;
+}
+
+export function hostBase(conn: Connection): string {
+  if (conn.kind === "offline") return "";
+  if (conn.kind === "local") return localBase();
+  return conn.url.trim().replace(/\/+$/, "");
+}

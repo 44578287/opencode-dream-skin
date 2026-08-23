@@ -18,6 +18,20 @@ const KNOWN = new Set([
   "question.rejected",
 ]);
 
+function unwrap(raw: unknown): HostEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const inner =
+    obj.payload && typeof obj.payload === "object"
+      ? (obj.payload as Record<string, unknown>)
+      : obj.event && typeof obj.event === "object"
+        ? (obj.event as Record<string, unknown>)
+        : obj;
+  if (typeof inner.type !== "string") return null;
+  if (!KNOWN.has(inner.type)) return null;
+  return inner as HostEvent;
+}
+
 function parseBlock(block: string): HostEvent | null {
   const dataLines: string[] = [];
   for (const raw of block.split("\n")) {
@@ -27,12 +41,10 @@ function parseBlock(block: string): HostEvent | null {
   const data = dataLines.join("\n").trim();
   if (!data || data === "[DONE]") return null;
   try {
-    const parsed = JSON.parse(data) as HostEvent;
-    if (parsed && typeof parsed === "object" && KNOWN.has(parsed.type)) return parsed;
+    return unwrap(JSON.parse(data));
   } catch {
     return null;
   }
-  return null;
 }
 
 /** Parse an OpenCode `text/event-stream` body into host bus events. */

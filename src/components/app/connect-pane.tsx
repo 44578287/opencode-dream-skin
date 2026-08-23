@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { Cloud, CloudOff, LoaderCircle, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Cloud, CloudOff, LoaderCircle, RefreshCw, Server, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useApp } from "@/lib/store";
 import { runSync } from "./remote-bridge";
 import { AndroidClientCard } from "./android-client";
+import { isNativeShell } from "@/lib/remote/types";
 import { cn } from "@/lib/utils";
 
 function ago(ts: number | null) {
@@ -29,26 +30,36 @@ export function ConnectPane() {
   const [url, setUrl] = useState(connection.url);
   const [username, setUsername] = useState(connection.username);
   const [password, setPassword] = useState(connection.password);
+  const [origin, setOrigin] = useState("");
+  const native = typeof window !== "undefined" && isNativeShell();
 
-  const online = connection.kind === "demo" || Boolean(host?.ok);
+  useEffect(() => {
+    setOrigin(typeof window !== "undefined" ? window.location.origin : "");
+  }, []);
+
+  const online = Boolean(host?.ok && connection.kind !== "offline");
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto px-4 py-4" data-ds-part="home">
       <AndroidClientCard />
+
       <div className="mt-3 rounded-md border border-border bg-panel/70 p-4">
         <div className="flex items-center gap-2">
           {online ? <Cloud className="size-4 text-primary" /> : <CloudOff className="size-4 text-muted" />}
           <p className="text-sm font-medium">{online ? host?.label : "未连接主机"}</p>
-          <Badge tone={online ? "primary" : "muted"}>{live.connected ? "实时流" : online ? "在线" : "离线"}</Badge>
+          <Badge tone={live.connected ? "success" : online ? "primary" : "muted"}>
+            {live.connected ? "实时流" : online ? "在线" : "离线"}
+          </Badge>
         </div>
         <p className="mt-1 text-xs text-muted">
-          {host?.version ? `OpenCode ${host.version}` : "连上主机后走官方事件流：正文、工具、权限、提问都是同一条实时通道。"}
+          {host?.version ? `OpenCode ${host.version}` : "官方 HTTP / SSE：会话、文件、搜索、权限、提问走同一条通道。"}
         </p>
+        {host?.error && !online ? <p className="mt-2 text-xs text-error">{host.error}</p> : null}
         <p className="mt-2 text-xs text-accent">{syncing ? "正在同步…" : lastSyncNote ?? ago(lastSyncAt)}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" onClick={() => void runSync("pull")} disabled={syncing || connection.kind === "offline"}>
             <RefreshCw className={cn("size-3.5", syncing ? "animate-spin" : "")} />
-            补齐会话列表
+            重新同步
           </Button>
         </div>
       </div>
@@ -57,9 +68,9 @@ export function ConnectPane() {
       <div className="flex flex-col gap-1">
         {(
           [
-            ["theme", "主题名（连接时对齐一次）"],
-            ["sessions", "会话列表（连接时对齐，之后走事件）"],
-            ["files", "工作区文件（连接时对齐）"],
+            ["theme", "主题名"],
+            ["sessions", "会话"],
+            ["files", "工作区文件"],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="flex min-h-11 items-center gap-3 rounded-sm px-1">
@@ -76,34 +87,53 @@ export function ConnectPane() {
 
       <p className="mt-5 mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">主机</p>
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setConnection({ kind: "demo" });
-            void runSync("boot");
-          }}
-          className={cn(
-            "min-h-11 rounded-md border px-3 py-2 text-left text-sm",
-            connection.kind === "demo" ? "border-border-active bg-element" : "border-border",
-          )}
-        >
-          演示主机
-          <span className="mt-0.5 block text-[11px] text-muted">预览用的实时总线：发一句就能看到流式正文、权限和提问。</span>
-        </button>
+        {native ? null : (
+          <button
+            type="button"
+            onClick={() => {
+              setConnection({ kind: "local" });
+            }}
+            className={cn(
+              "min-h-11 rounded-md border px-3 py-2 text-left text-sm",
+              connection.kind === "local" ? "border-border-active bg-element" : "border-border",
+            )}
+          >
+            <span className="flex items-center gap-2">
+              <Server className="size-3.5" />
+              本机 Grok 引擎
+            </span>
+            <span className="mt-0.5 block text-[11px] text-muted">
+              直接用这台服务器上的 Grok 4.5 读写工作区。写入和命令会先问权限。
+            </span>
+          </button>
+        )}
+
         <div className="rounded-md border border-border p-3">
-          <p className="text-sm">自己的 OpenCode</p>
-          <p className="mt-1 text-[11px] text-muted">填 OpenCode 主机地址。连上后订阅官方事件流，权限和提问会弹到对话里。</p>
-          <Input className="mt-2" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="主机地址" />
+          <p className="text-sm">OpenCode 主机</p>
+          <p className="mt-1 text-[11px] text-muted">
+            在电脑上运行{" "}
+            <code className="rounded-sm bg-element px-1">
+              opencode serve --port 4096 --cors {origin || "https://localhost"}
+            </code>
+            ，然后填入地址。手机请用电脑的局域网 IP。
+          </p>
+          <Input
+            className="mt-2"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="http://192.168.1.8:4096"
+            autoCapitalize="none"
+            autoCorrect="off"
+          />
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名" />
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码" />
+            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名" autoCapitalize="none" />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码（可选）" />
           </div>
           <div className="mt-2 flex gap-2">
             <Button
               size="sm"
               onClick={() => {
-                setConnection({ kind: "remote", url, username, password });
-                void runSync("boot");
+                setConnection({ kind: "remote", url: url.trim(), username, password });
               }}
               disabled={syncing || !url.trim()}
             >
@@ -114,10 +144,14 @@ export function ConnectPane() {
               size="sm"
               variant="ghost"
               onClick={() => {
-                setConnection({ kind: "offline" });
+                setConnection({ kind: "offline", url: "", password: "" });
                 useApp.getState().setHost({ ok: false, kind: "offline", version: "", label: "未连接" });
+                useApp.getState().applySessions([], "");
+                useApp.getState().applyFiles({});
+                useApp.getState().setLive({ connected: false, lastEventType: null });
               }}
             >
+              <Unplug className="size-3.5" />
               断开
             </Button>
           </div>

@@ -18,23 +18,36 @@ export function ChatPane({
   const skin = theme.dreamSkin;
   void customThemes;
 
+  const connection = useApp((s) => s.connection);
+  const host = useApp((s) => s.host);
+
   if (!messages.length && !running) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-6 text-center" data-ds-part="home">
-        {skin ? (
+        {connection.kind === "offline" ? (
+          <>
+            <p className="ds-eyebrow text-[11px] font-medium uppercase">OpenCode</p>
+            <p className="ds-empty-quote mt-4 max-w-md text-3xl font-medium tracking-tight text-balance sm:text-4xl" data-ds-part="home-hero">
+              先连上主机
+            </p>
+            <p className="mt-3 max-w-sm text-sm text-muted text-pretty">
+              打开连接页填入 OpenCode 主机地址。网页也可以直接用本机 Grok 引擎。
+            </p>
+          </>
+        ) : skin ? (
           <>
             <p className="ds-eyebrow text-[11px] font-medium uppercase">{skin.name}</p>
             <p className="ds-empty-quote mt-4 max-w-md text-3xl font-medium tracking-tight text-balance sm:text-4xl" data-ds-part="home-hero">
               {skin.quote ?? "MAKE SOMETHING WONDERFUL"}
             </p>
-            <p className="mt-3 max-w-sm text-sm text-muted text-pretty">{skin.tagline}</p>
+            <p className="mt-3 max-w-sm text-sm text-muted text-pretty">
+              {host?.ok ? skin.tagline : host?.error ? host.error : skin.tagline}
+            </p>
           </>
         ) : (
           <>
             <p className="font-mono text-2xl font-medium tracking-tight text-balance">opencode</p>
-            <p className="mt-2 max-w-sm text-sm text-muted text-pretty">
-              对当前工作区提问，或切换到规划模式先看方案。
-            </p>
+            <p className="mt-2 max-w-sm text-sm text-muted text-pretty">对当前工作区提问，或切换到规划模式先看方案。</p>
           </>
         )}
       </div>

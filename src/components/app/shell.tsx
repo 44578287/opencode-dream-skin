@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Files,
   GitBranch,
@@ -27,7 +27,8 @@ import { ConnectPane } from "./connect-pane";
 import { RemoteBridge } from "./remote-bridge";
 import { NotifyBridge } from "./notify-bridge";
 import { LivePrompts } from "./live-prompts";
-import { sendPrompt } from "@/lib/remote/live";
+import { sendPrompt, runShell } from "@/lib/remote/live";
+import { createRemoteSession, deleteRemoteSession } from "@/lib/remote/client";
 
 const RAILS: { id: RailId; label: string; icon: typeof Files }[] = [
   { id: "sessions", label: "会话", icon: MessageSquare },
@@ -41,7 +42,6 @@ export function DesktopShell() {
   const activeId = useApp((s) => s.activeSessionId);
   const session = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const setActive = useApp((s) => s.setActiveSession);
-  const newSession = useApp((s) => s.newSession);
   const closeSession = useApp((s) => s.closeSession);
   const rail = useApp((s) => s.rail);
   const setRail = useApp((s) => s.setRail);
@@ -61,6 +61,24 @@ export function DesktopShell() {
   const theme = findTheme(themeId);
   const dirty = changedFiles(files).length;
   const host = useApp((s) => s.host);
+  const projectName = useApp((s) => s.projectName);
+  const projectBranch = useApp((s) => s.projectBranch);
+
+  async function ensureSession() {
+    const conn = useApp.getState().connection;
+    if (conn.kind === "offline") {
+      useApp.getState().setSettingsOpen(true);
+      useApp.getState().setMobileTab("link");
+      throw new Error("请先连接主机");
+    }
+    const current = useApp.getState();
+    const existing = current.sessions.find((s) => s.id === current.activeSessionId);
+    if (existing) return existing;
+    const created = await createRemoteSession(conn);
+    useApp.getState().hydrateSession(created);
+    useApp.getState().setActiveSession(created.id);
+    return created;
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -75,27 +93,62 @@ export function DesktopShell() {
       }
       if (meta && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        newSession();
+        void onNew();
       }
       if (e.key === "Escape") setCommandOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [newSession, setCommandOpen, setThemeOpen]);
+  }, [setCommandOpen, setThemeOpen]);
+
+  async function onNew() {
+    const conn = useApp.getState().connection;
+    if (conn.kind === "offline") {
+      useApp.getState().setSettingsOpen(true);
+      useApp.getState().setMobileTab("link");
+      return;
+    }
+    try {
+      const created = await createRemoteSession(conn);
+      useApp.getState().hydrateSession(created);
+      useApp.getState().setActiveSession(created.id);
+    } catch (err) {
+      useApp.getState().setHost({
+        ok: false,
+        kind: conn.kind,
+        version: "",
+        label: conn.kind === "local" ? "本机 Grok 引擎" : conn.url,
+        error: err instanceof Error ? err.message : "无法创建会话",
+      });
+    }
+  }
+
+  async function onClose(id: string) {
+    const conn = useApp.getState().connection;
+    if (conn.kind !== "offline") {
+      await deleteRemoteSession(conn, id).catch(() => undefined);
+    }
+    closeSession(id);
+  }
 
   async function send(text: string) {
-    if (!session) return;
+    let session;
+    try {
+      session = await ensureSession();
+    } catch {
+      return;
+    }
     const userMsg: ChatMessage = { id: uid("msg"), role: "user", content: text, createdAt: Date.now() };
     appendMessage(session.id, userMsg);
     if (session.title === "新会话") patchSession(session.id, { title: text.slice(0, 28) });
     patchSession(session.id, { status: "running" });
     try {
-      await sendPrompt(connection, session.id, text);
+      await sendPrompt(connection, session.id, text, { model: session.model, agent: session.mode });
     } catch (err) {
       appendMessage(session.id, {
         id: uid("msg"),
         role: "assistant",
-        content: err instanceof Error ? err.message : "没发出去。主题和已同步的事件不受影响。",
+        content: err instanceof Error ? err.message : "没发出去。",
         createdAt: Date.now(),
       });
       patchSession(session.id, { status: "error" });
@@ -112,8 +165,8 @@ export function DesktopShell() {
           sessions={sessions}
           activeId={activeId}
           onSelect={setActive}
-          onNew={newSession}
-          onClose={closeSession}
+          onNew={onNew}
+          onClose={(id) => void onClose(id)}
           themeName={theme.name}
           statusText={theme.dreamSkin?.statusText}
           hostLabel={live.connected ? (host?.label ?? "事件流") : host?.ok ? host.label : undefined}
@@ -172,7 +225,7 @@ export function DesktopShell() {
                     <ChatPane messages={session?.messages ?? []} running={sending} />
                   </div>
                   <LivePrompts sessionId={session?.id} />
-                  <Composer onSend={send} disabled={false} />
+                  <Composer onSend={send} disabled={connection.kind === "offline"} />
                 </div>
               </Panel>
               <ResizeSep className="w-px bg-border hover:bg-primary" />
@@ -181,19 +234,19 @@ export function DesktopShell() {
                   <div className="min-h-0 flex-1">
                     <EditorPane />
                   </div>
-                  {terminalOpen ? <TerminalStrip dirty={dirty} /> : null}
+                  {terminalOpen ? <TerminalStrip sessionId={session?.id} /> : null}
                 </div>
               </Panel>
             </Group>
           </div>
 
-          <MobileShell onSend={send} sending={sending} />
+          <MobileShell onSend={send} sending={sending} onNew={() => void onNew()} />
         </div>
 
         <footer className="hidden h-7 items-center justify-between gap-3 border-t border-border px-3 text-[11px] text-muted md:flex" data-ds-chrome>
           <div className="flex items-center gap-3">
-            <span className="font-medium text-foreground">harbor</span>
-            <span>main</span>
+            <span className="font-medium text-foreground">{projectName}</span>
+            <span>{projectBranch}</span>
             <span>{dirty ? `${dirty} 处更改` : "干净"}</span>
           </div>
           <div className="flex items-center gap-3">
@@ -218,12 +271,13 @@ export function DesktopShell() {
           <div className="max-h-[min(80vh,640px)] overflow-auto">
             <div className="space-y-3 border-b border-border px-4 pb-3 text-sm">
               <p className="text-muted">
-                这是 OpenCode 的远程客户端外壳：连上之后走官方事件流，正文、工具、权限、提问都能当场互动。Dream Skin 主题包双向转换，手机端单独排布。
+                这是 OpenCode 的远程客户端：连上官方 `opencode serve` 或使用本机 Grok 引擎。会话、文件、权限、提问走同一条实时通道。Dream Skin 主题可导入导出。
               </p>
               <div className="flex flex-wrap gap-2">
                 <Badge>Dream Skin</Badge>
                 <Badge>ZIP 双向</Badge>
                 <Badge>实时事件流</Badge>
+                <Badge>Grok 4.5</Badge>
               </div>
             </div>
             <ConnectPane />
@@ -315,15 +369,50 @@ function Titlebar({
   );
 }
 
-function TerminalStrip({ dirty }: { dirty: number }) {
+function TerminalStrip({ sessionId }: { sessionId?: string }) {
+  const files = useApp((s) => s.files);
+  const dirty = changedFiles(files).length;
+  const connection = useApp((s) => s.connection);
+  const projectName = useApp((s) => s.projectName);
+  const [cmd, setCmd] = useState("");
+  const [log, setLog] = useState<string[]>([`~/ ${projectName}`, dirty ? `${dirty} file(s) modified` : "working tree clean"]);
+
+  async function run() {
+    const text = cmd.trim();
+    if (!text || !sessionId) return;
+    setLog((prev) => [...prev.slice(-20), `❯ ${text}`]);
+    setCmd("");
+    try {
+      await runShell(connection, sessionId, text);
+    } catch (err) {
+      setLog((prev) => [...prev, err instanceof Error ? err.message : "命令失败"]);
+    }
+  }
+
   return (
     <div className="h-36 border-t border-border bg-background px-3 py-2 font-mono text-[12px] leading-6 text-muted">
-      <p className="text-accent">~/harbor</p>
-      <p>git status</p>
-      <p className="text-foreground">{dirty ? `${dirty} file(s) modified` : "working tree clean"}</p>
-      <p>
-        <span className="text-primary">❯</span> <span className="text-foreground">_</span>
-      </p>
+      <div className="h-24 overflow-auto">
+        {log.map((line, i) => (
+          <p key={i} className={line.startsWith("❯") ? "text-foreground" : ""}>
+            {line}
+          </p>
+        ))}
+      </div>
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run();
+        }}
+      >
+        <span className="text-primary">❯</span>
+        <input
+          value={cmd}
+          onChange={(e) => setCmd(e.target.value)}
+          className="min-w-0 flex-1 bg-transparent text-foreground outline-none"
+          placeholder="在工作区里执行命令，回车后先问权限"
+        />
+      </form>
     </div>
   );
 }

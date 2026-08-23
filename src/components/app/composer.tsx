@@ -10,7 +10,11 @@ export function Composer({ onSend, disabled, compact }: { onSend: (text: string)
   const setMode = useApp((s) => s.setMode);
   const setModel = useApp((s) => s.setModel);
   const mode = session?.mode ?? "build";
-  const model = session?.model ?? "grok-4.5";
+  const hostModels = useApp((s) => s.hostModels);
+  const model = session?.model ?? hostModels[0]?.id ?? "grok-4.5";
+  const models = hostModels.length
+    ? hostModels
+    : MODELS.map((m) => ({ id: m.id, label: m.label, provider: "xai" }));
 
   function submit() {
     const text = value.trim();
@@ -45,7 +49,7 @@ export function Composer({ onSend, disabled, compact }: { onSend: (text: string)
                 onChange={(e) => setModel(e.target.value)}
                 className="bg-transparent text-[11px] text-foreground focus:outline-none"
               >
-                {MODELS.map((m) => (
+                {models.map((m) => (
                   <option key={m.id} value={m.id} className="bg-panel">
                     {m.label}
                   </option>
